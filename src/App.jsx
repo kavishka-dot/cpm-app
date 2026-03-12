@@ -1829,31 +1829,81 @@ function ResourceTab({ computed }) {
 // ─── CPM / PERT Pro — Main App ────────────────────────────────────────────────
 
 
-// Two-level tab groups
-const TAB_GROUPS = [
-  {
-    group: "Basic",
-    color: "var(--accent)",
-    tabs: [
-      { id: "input",   label: "Input",         icon: "⌨" },
-      { id: "pert",    label: "PERT Estimates", icon: "∑" },
-      { id: "network", label: "Network Graph",  icon: "◎" },
-      { id: "cpm",     label: "CPM Analysis",   icon: "⧖" },
-      { id: "crash",   label: "Crash Analysis", icon: "⚡" },
-    ],
-  },
-  {
-    group: "Advanced",
-    color: "var(--blue)",
-    tabs: [
-      { id: "gantt",    label: "Gantt Chart",     icon: "▬" },
-      { id: "monte",    label: "Monte Carlo",     icon: "◈" },
-      { id: "evm",      label: "EVM / EMV",       icon: "₹" },
-      { id: "resource", label: "Resources",       icon: "◉" },
-    ],
-  },
+// Tab groups — Input is standalone, Basic and Advanced are dropdowns
+const BASIC_TABS = [
+  { id: "pert",    label: "PERT Estimates", icon: "∑" },
+  { id: "network", label: "Network Graph",  icon: "◎" },
+  { id: "cpm",     label: "CPM Analysis",   icon: "⧖" },
+  { id: "crash",   label: "Crash Analysis", icon: "⚡" },
 ];
-const ALL_TABS = TAB_GROUPS.flatMap(g => g.tabs);
+const ADVANCED_TABS = [
+  { id: "gantt",    label: "Gantt Chart",   icon: "▬" },
+  { id: "monte",    label: "Monte Carlo",   icon: "◈" },
+  { id: "evm",      label: "EVM / EMV",     icon: "₹" },
+  { id: "resource", label: "Resources",     icon: "◉" },
+];
+const ALL_TABS = [{ id: "input", label: "Input", icon: "⌨" }, ...BASIC_TABS, ...ADVANCED_TABS];
+
+function DropdownMenu({ label, tabs, activeTab, setActiveTab, unlocked, color, open, setOpen }) {
+  const hasActive = tabs.some(t => t.id === activeTab);
+  return (
+    <div style={{ position: "relative", height: "100%", display: "flex", alignItems: "stretch" }}
+      onMouseLeave={() => setOpen(false)}>
+      <button
+        onMouseEnter={() => setOpen(true)}
+        onClick={() => setOpen(v => !v)}
+        style={{
+          background: hasActive ? `${color}11` : "none",
+          border: "none", cursor: "pointer",
+          padding: "0 16px", height: "100%", fontSize: 12,
+          color: hasActive ? color : "var(--text2)",
+          borderBottom: hasActive ? `2px solid ${color}` : "2px solid transparent",
+          transition: "all 0.15s", whiteSpace: "nowrap",
+          display: "flex", alignItems: "center", gap: 6,
+          fontFamily: "'JetBrains Mono', monospace",
+          letterSpacing: "0.02em",
+        }}>
+        {label}
+        <span style={{ fontSize: 9, opacity: 0.6, marginTop: 1 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, zIndex: 300,
+          background: "var(--bg2)", border: "1px solid var(--border)",
+          borderRadius: 8, minWidth: 200, boxShadow: "0 8px 32px #0009",
+          padding: "6px 0", marginTop: 1,
+        }}>
+          {tabs.map(tab => {
+            const active = activeTab === tab.id;
+            const locked = !unlocked(tab.id);
+            return (
+              <button key={tab.id}
+                onClick={() => { if (!locked) { setActiveTab(tab.id); setOpen(false); } }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", background: active ? `${color}18` : "none",
+                  border: "none", cursor: locked ? "not-allowed" : "pointer",
+                  padding: "9px 16px", fontSize: 12,
+                  color: active ? color : locked ? "var(--text3)" : "var(--text2)",
+                  opacity: locked ? 0.4 : 1,
+                  transition: "background 0.12s",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  textAlign: "left", letterSpacing: "0.02em",
+                }}
+                onMouseEnter={e => { if (!locked && !active) e.currentTarget.style.background = `${color}0d`; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = "none"; }}>
+                <span style={{ fontSize: 11, opacity: 0.65, width: 14, textAlign: "center" }}>{tab.icon}</span>
+                {tab.label}
+                {active && <span style={{ marginLeft: "auto", fontSize: 9, color, opacity: 0.8 }}>●</span>}
+                {locked && <span style={{ marginLeft: "auto", fontSize: 9, opacity: 0.4 }}>🔒</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function loadFromStorage() {
   try {
@@ -1879,6 +1929,7 @@ function App() {
   const [theme, setTheme] = useState("dark");
   const [showScenarios, setShowScenarios] = useState(false);
   const [scenarioName, setScenarioName] = useState("");
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   const T = theme === "dark" ? DARK : LIGHT;
 
@@ -2004,46 +2055,50 @@ function App() {
           </span>
         </div>
 
-        {/* Grouped Tabs */}
-        <div style={{ display: "flex", flex: 1, height: "100%", overflowX: "auto", alignItems: "stretch" }}>
-          {TAB_GROUPS.map((group, gi) => (
-            <div key={group.group} style={{
-              display: "flex", alignItems: "stretch",
-              borderRight: gi < TAB_GROUPS.length - 1 ? "1px solid var(--border)" : "none",
-              marginRight: gi < TAB_GROUPS.length - 1 ? 0 : 0,
+        {/* Nav: Input standalone + Basic/Advanced dropdowns */}
+        <div style={{ display: "flex", flex: 1, height: "100%", alignItems: "stretch" }}>
+          {/* Input — always visible standalone tab */}
+          <button className="tab-btn"
+            onClick={() => setActiveTab("input")}
+            style={{
+              background: activeTab === "input" ? "var(--accent)11" : "none",
+              border: "none", cursor: "pointer",
+              padding: "0 18px", height: "100%", fontSize: 12, letterSpacing: "0.02em",
+              color: activeTab === "input" ? "var(--accent)" : "var(--text2)",
+              borderBottom: activeTab === "input" ? "2px solid var(--accent)" : "2px solid transparent",
+              transition: "all 0.15s", whiteSpace: "nowrap",
+              display: "flex", alignItems: "center", gap: 6,
+              fontFamily: "'JetBrains Mono', monospace",
+              borderRight: "1px solid var(--border)",
+              marginRight: 4,
             }}>
-              {/* Group label */}
-              <div style={{
-                display: "flex", alignItems: "center", padding: "0 10px 0 14px",
-                fontSize: 9, fontWeight: 800, letterSpacing: "0.15em",
-                color: group.color, opacity: 0.5, whiteSpace: "nowrap",
-                borderRight: "1px solid var(--border)", marginRight: 2,
-                textTransform: "uppercase",
-              }}>{group.group}</div>
-              {/* Tabs in group */}
-              {group.tabs.map(tab => {
-                const unlocked = tabUnlocked(tab.id);
-                const active = activeTab === tab.id;
-                return (
-                  <button key={tab.id} className="tab-btn"
-                    onClick={() => unlocked && setActiveTab(tab.id)}
-                    style={{
-                      background: active ? `${group.color}11` : "none",
-                      border: "none", cursor: unlocked ? "pointer" : "not-allowed",
-                      padding: "0 14px", height: "100%", fontSize: 12, letterSpacing: "0.02em",
-                      color: active ? group.color : unlocked ? "var(--text2)" : "var(--text3)",
-                      borderBottom: active ? `2px solid ${group.color}` : "2px solid transparent",
-                      opacity: unlocked ? 1 : 0.3, transition: "all 0.15s", whiteSpace: "nowrap",
-                      display: "flex", alignItems: "center", gap: 5,
-                      fontFamily: "'JetBrains Mono', monospace",
-                    }}>
-                    <span style={{ fontSize: 10, opacity: 0.7 }}>{tab.icon}</span>
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+            <span style={{ fontSize: 10, opacity: 0.7 }}>⌨</span>
+            Input
+          </button>
+
+          {/* Basic dropdown */}
+          <DropdownMenu
+            label="Basic"
+            tabs={BASIC_TABS}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            unlocked={tabUnlocked}
+            color="var(--accent)"
+            open={openDropdown === "basic"}
+            setOpen={v => setOpenDropdown(v ? "basic" : null)}
+          />
+
+          {/* Advanced dropdown */}
+          <DropdownMenu
+            label="Advanced"
+            tabs={ADVANCED_TABS}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            unlocked={tabUnlocked}
+            color="var(--blue)"
+            open={openDropdown === "advanced"}
+            setOpen={v => setOpenDropdown(v ? "advanced" : null)}
+          />
         </div>
 
         {/* Right actions */}
